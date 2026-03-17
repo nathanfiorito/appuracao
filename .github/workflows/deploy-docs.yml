@@ -3,7 +3,7 @@ name: Deploy Docs
 on:
   push:
     branches: [main]
-    paths: ['apps/docs/**']
+    paths: ['apps/docs/**', '.github/workflows/deploy-docs.yml']
   workflow_dispatch:
 
 permissions:
@@ -18,31 +18,14 @@ concurrency:
 jobs:
   build:
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: apps/docs
     steps:
       - uses: actions/checkout@v4
 
-      - uses: actions/setup-node@v4
+      - name: Build and upload
+        uses: withastro/action@v3
         with:
+          path: apps/docs
           node-version: 22
-          cache: npm
-          cache-dependency-path: apps/docs/package-lock.json
-
-      - name: Install dependencies
-        run: npm install --legacy-peer-deps
-
-      - name: Install Chromium for Mermaid
-        run: npx playwright install chromium --with-deps
-
-      - name: Build
-        run: npm run build
-
-      - name: Upload Pages artifact
-        uses: actions/upload-pages-artifact@v3
-        with:
-          path: apps/docs/dist
 
   deploy:
     needs: build

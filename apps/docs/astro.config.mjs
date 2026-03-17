@@ -1,13 +1,11 @@
 import { defineConfig } from 'astro/config';
 import starlight from '@astrojs/starlight';
-import rehypeMermaid from 'rehype-mermaid';
 
 export default defineConfig({
-  site: 'https://your-org.github.io',
+  // site and base are set automatically by withastro/action for GitHub Pages.
+  // For local builds: npm run build -- --site https://nathanfiorito.github.io --base /appuracao
+  site: 'https://nathanfiorito.github.io',
   base: '/appuracao',
-  markdown: {
-    rehypePlugins: [[rehypeMermaid, { strategy: 'img-svg' }]],
-  },
   integrations: [
     starlight({
       title: 'Apuração Paralela',
@@ -21,7 +19,7 @@ export default defineConfig({
       },
       customCss: ['./src/styles/custom.css'],
       social: [
-        { icon: 'github', label: 'GitHub', href: 'https://github.com/your-org/appuracao' },
+        { icon: 'github', label: 'GitHub', href: 'https://github.com/nathanfiorito/appuracao' },
       ],
       sidebar: [
         { label: 'Sobre o Projeto', link: '/' },
