@@ -1,0 +1,33 @@
+---
+title: Apuração Paralela
+description: Contagem paralela de votos com verificação criptográfica para eleições brasileiras.
+template: splash
+hero:
+  tagline: Cidadãos verificam os resultados eleitorais de forma independente, usando os próprios dados do TSE.
+  actions:
+    - text: Início Rápido
+      link: /appuracao/development/quickstart/
+      icon: right-arrow
+      variant: primary
+    - text: Ver no GitHub
+      link: https://github.com/nathanfiorito/appuracao
+      icon: external
+---
+
+## O que é?
+
+**Apuração Paralela** é um sistema crowdsourced de contagem de votos com verificação criptográfica para eleições brasileiras.
+
+Cidadãos escaneiam o QR Code impresso no **Boletim de Urna (BU)** afixado na seção eleitoral após o fechamento das urnas. O sistema verifica a assinatura Ed25519 emitida pelo TSE, deduplica, agrega e publica os resultados publicamente via CloudFront.
+
+## Como funciona
+
+| Etapa | O que acontece |
+|-------|----------------|
+| 1. Scan | Cidadão escaneia QR Code do Boletim de Urna |
+| 2. Parse | Sistema decodifica o formato tag:value do TSE |
+| 3. Verificação | SHA-512 + Ed25519 validam autenticidade |
+| 4. Deduplicação | Chave composta evita contagem dupla |
+| 5. Armazenamento | BU imutável gravado no DynamoDB |
+| 6. Apuração | Votos agregados por cargo e candidato |
+| 7. Publicação | `results.json` publicado via CloudFront |
