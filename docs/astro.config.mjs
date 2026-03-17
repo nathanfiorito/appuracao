@@ -3,9 +3,7 @@ import { defineConfig } from 'astro/config';
 import starlight from '@astrojs/starlight';
 
 export default defineConfig({
-  // Required for GitHub Pages: site URL + base path (repo name)
-  site: 'https://nathanfiorito.github.io',
-  base: '/appuracao',
+  site: 'https://docs.nathanfiorito.com.br',
 
   integrations: [
     starlight({
