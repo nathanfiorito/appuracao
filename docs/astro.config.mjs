@@ -19,9 +19,9 @@ export default defineConfig({
           lang: 'pt-BR',
         },
       },
-      social: {
-        github: 'https://github.com/nathanfiorito/appuracao',
-      },
+      social: [
+        { icon: 'github', label: 'GitHub', href: 'https://github.com/nathanfiorito/appuracao' },
+      ],
       sidebar: [
         {
           label: 'Arquitetura',
