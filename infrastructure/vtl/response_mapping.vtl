@@ -1,0 +1,7 @@
+## VTL Mapping Template — Step Functions → API Gateway (Response)
+## Returns accepted status and execution ARN to the client.
+#set($output = $input.json('$'))
+{
+  "status": "accepted",
+  "execution_id": "$output.executionArn"
+}

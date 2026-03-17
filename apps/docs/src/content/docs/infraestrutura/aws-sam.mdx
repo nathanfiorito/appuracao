@@ -1,0 +1,129 @@
+---
+title: AWS SAM
+description: Walkthrough do template SAM com todos os recursos da infraestrutura.
+---
+
+O arquivo `infrastructure/template.yaml` define todos os recursos AWS usando o AWS Serverless Application Model (SAM).
+
+## Parâmetros
+
+```yaml
+Parameters:
+  TSEPublicKeyHex:
+    Type: String
+    Description: Chave pública Ed25519 do TSE em hex
+    NoEcho: true  # não aparece em logs
+```
+
+## Globals (Lambda)
+
+Todos as funções Lambda herdam:
+- Runtime: `python3.11`
+- Timeout: 30s (exceto Tally: 60s)
+- MemorySize: 256 MB
+- Variáveis de ambiente: tabelas DynamoDB, bucket S3, chave TSE
+
+## DynamoDB
+
+Duas tabelas PAY_PER_REQUEST:
+
+| Tabela | Propósito | TTL |
+|--------|-----------|-----|
+| `appuracao-bulletins` | BUs verificados (permanente) | — |
+| `appuracao-partial-qrcodes` | Buffer multi-QR | 1 hora |
+
+## S3 + CloudFront
+
+```yaml
+ResultsBucket:
+  PublicAccessBlockConfiguration:
+    BlockPublicAcls: true
+    BlockPublicPolicy: true
+    ...
+
+ResultsBucketPolicy:
+  # Permite apenas CloudFront OAC via Service Principal
+  Effect: Allow
+  Principal:
+    Service: cloudfront.amazonaws.com
+  Condition:
+    StringEquals:
+      AWS:SourceArn: !Sub arn:aws:cloudfront::...
+
+CloudFrontOAC:
+  SigningBehavior: always
+  SigningProtocol: sigv4
+```
+
+O bucket é completamente privado. O acesso público é exclusivamente via OAC (Origin Access Control) do CloudFront.
+
+## Lambda Functions
+
+| Função | Handler | Política IAM |
+|--------|---------|-------------|
+| ParseFunction | `parse_handler.handler` | Nenhuma |
+| AssembleFunction | `assemble_handler.handler` | DynamoDB CRUD em `partial_qrcodes` |
+| VerifyFunction | `verify_handler.handler` | Nenhuma |
+| DeduplicateFunction | `deduplicate_handler.handler` | DynamoDB Read em `bulletins` |
+| StoreFunction | `store_handler.handler` | DynamoDB CRUD em `bulletins` |
+| TallyFunction | `tally_handler.handler` | DynamoDB Read em `bulletins`; timeout 60s |
+| PublishFunction | `publish_handler.handler` | S3 Write em `ResultsBucket` |
+
+## Step Functions Express
+
+```yaml
+BulletinStateMachine:
+  Type: EXPRESS
+  Logging:
+    Level: ERROR
+    IncludeExecutionData: true
+```
+
+Express workflows têm execução assíncrona de curta duração (até 5 min), ideal para o pipeline de processamento de BU.
+
+## API Gateway REST
+
+```yaml
+BulletinsPostMethod:
+  AuthorizationType: NONE
+  RequestValidatorId: !Ref RequestValidator  # valida JSON schema
+  Integration:
+    Type: AWS  # integração direta Step Functions (sem Lambda intermediária)
+    Uri: arn:aws:apigateway:...:states:action/StartExecution
+```
+
+### JSON Schema de Validação
+
+```json
+{
+  "type": "object",
+  "required": ["qr_codes"],
+  "properties": {
+    "qr_codes": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 4,
+      "items": { "type": "string", "minLength": 10 }
+    }
+  }
+}
+```
+
+### Throttling
+
+```yaml
+MethodSettings:
+  ThrottlingBurstLimit: 100
+  ThrottlingRateLimit: 50
+```
+
+## Outputs
+
+Após o deploy, o SAM exibe:
+
+| Output | Descrição |
+|--------|-----------|
+| `ApiUrl` | Endpoint do API Gateway (`NEXT_PUBLIC_API_URL`) |
+| `ResultsUrl` | URL do CloudFront para `results.json` (`NEXT_PUBLIC_RESULTS_URL`) |
+| `StateMachineArn` | ARN da máquina de estados |
+| `BulletinsTableName` | Nome da tabela DynamoDB de BUs |

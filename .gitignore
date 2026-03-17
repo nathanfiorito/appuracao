@@ -1,0 +1,38 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+*.egg-info/
+dist/
+build/
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# Keys (never commit)
+keys/
+
+# AWS SAM
+infrastructure/.aws-sam/
+infrastructure/.samrc
+
+# Node / Next.js
+frontend/node_modules/
+frontend/.next/
+frontend/out/
+
+# Docs (Astro/Starlight)
+apps/docs/node_modules/
+apps/docs/dist/
+apps/docs/.astro/
+
+# OS
+.DS_Store
+Thumbs.db

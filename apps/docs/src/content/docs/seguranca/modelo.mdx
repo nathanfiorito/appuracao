@@ -1,0 +1,64 @@
+---
+title: Modelo de Segurança
+description: Camadas de segurança implementadas no sistema de apuração paralela.
+---
+
+## Integridade dos Dados Eleitorais
+
+A segurança do sistema é baseada na verificação criptográfica obrigatória de cada BU.
+
+### Verificação Criptográfica
+
+Todo Boletim de Urna deve passar por duas verificações antes de ser aceito:
+
+1. **SHA-512**: o hash do conteúdo do BU deve corresponder ao campo `HASH` contido no próprio QR code
+2. **Ed25519**: a assinatura digital deve ser válida com a chave pública do TSE
+
+Nenhum BU com verificação falhada é armazenado. O campo `sig_verified` é `false` apenas em situações de erro de processamento, não de verificação negativa (esses são descartados).
+
+### Deduplicação
+
+A chave composta garante que cada seção eleitoral só possa ser contada uma vez:
+
+```
+PK: {PROC}#{PLEI}#{TURN}   — processo/pleito/turno
+SK: {UNFE}#{MUNI}#{ZONA}#{SECA}  — UF/município/zona/seção
+```
+
+Um BU duplicado com a **mesma assinatura** é descartado silenciosamente. Um BU com **assinatura diferente** para a mesma seção é flagrado para revisão manual — possível indício de adulteração.
+
+### Imutabilidade
+
+DynamoDB com `ConditionExpression: attribute_not_exists(pk)` garante insert-only mesmo sob concorrência.
+
+## Camadas AWS
+
+| Controle | Implementação |
+|---------|--------------|
+| Least privilege IAM | Cada Lambda tem role própria com apenas as permissões necessárias |
+| S3 privado | Acesso público bloqueado; leitura apenas via CloudFront OAC |
+| API Gateway validation | JSON schema validado antes do VTL mapping |
+| Throttling | 50 req/s sustentado, burst de 100 |
+| CloudTrail | Auditoria de todas as ações na conta AWS |
+| Sem credenciais hardcoded | Toda configuração via env vars / Secrets Manager |
+
+## Frontend
+
+- CORS restrito à origin do Vercel
+- Nenhum dado sensível no código client-side ou localStorage
+- CSP headers via configuração do Vercel
+
+## Auditabilidade
+
+O `raw_text` completo do QR code é armazenado em cada BU. Qualquer auditor pode:
+1. Pegar o `raw_text` do DynamoDB
+2. Recomputar o SHA-512 e verificar a assinatura Ed25519 de forma independente
+3. Comparar com os resultados oficiais do TSE
+
+## Chave Pública TSE (2024)
+
+```
+CF3AF898467A5B7A52D33D53BC037E2642A8DA996903FC252217E9C033E2F291
+```
+
+A chave é fornecida como parâmetro `TSEPublicKeyHex` no deploy do SAM (com `NoEcho: true`).

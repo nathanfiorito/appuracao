@@ -1,0 +1,64 @@
+---
+title: Início Rápido
+description: Como configurar e executar o projeto localmente.
+---
+
+## Pré-requisitos
+
+- Python 3.11+
+- Node.js 20+
+- AWS CLI configurado
+- AWS SAM CLI
+
+## Backend
+
+```bash
+pip install -e ".[dev]"
+pytest tests/
+```
+
+## Infraestrutura
+
+```bash
+# Baixar a chave pública do TSE
+python scripts/fetch_tse_keys.py --election-year 2024
+
+# Build e deploy
+cd infrastructure
+sam build
+sam deploy --guided
+```
+
+O `sam deploy --guided` irá solicitar:
+
+| Parâmetro | Descrição |
+|-----------|-----------|
+| `TSEPublicKeyHex` | Chave pública Ed25519 do TSE em hex (sem echo) |
+| Stack name | Nome da stack CloudFormation |
+| Region | Região AWS (recomendado: `sa-east-1`) |
+
+## Frontend
+
+```bash
+cd frontend
+npm install
+cp .env.local.example .env.local  # configurar NEXT_PUBLIC_API_URL e NEXT_PUBLIC_RESULTS_URL
+npm run dev
+```
+
+Abrir [http://localhost:3000](http://localhost:3000).
+
+### Variáveis de ambiente do frontend
+
+```sh
+NEXT_PUBLIC_API_URL=https://<api-id>.execute-api.<region>.amazonaws.com/prod
+NEXT_PUBLIC_RESULTS_URL=https://<cloudfront-id>.cloudfront.net/results.json
+```
+
+Os valores são exibidos nos outputs do `sam deploy`.
+
+## Chave pública TSE (2024)
+
+```
+CF3AF898467A5B7A52D33D53BC037E2642A8DA996903FC252217E9C033E2F291
+```

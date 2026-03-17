@@ -1,0 +1,59 @@
+---
+title: Roadmap MVP
+description: Milestones e tarefas para o lançamento do MVP.
+---
+
+## Objetivo do MVP
+
+Validar o pipeline completo com um conjunto real de BUs de uma eleição municipal, com pelo menos 10 voluntários escaneando QR codes em seções diferentes, produzindo resultados verificáveis publicamente.
+
+## Milestones
+
+### M1 — Pipeline Funcional (backend)
+
+- [x] `parse_handler`: parsing de QR code completo
+- [x] `verify_handler`: SHA-512 + Ed25519 com chave TSE real
+- [x] `deduplicate_handler`: lookup DynamoDB
+- [x] `store_handler`: insert imutável
+- [ ] `assemble_handler`: reassembly de multi-QR (2-4 fragmentos)
+- [ ] `tally_handler`: agregação por candidato e cargo
+- [ ] `publish_handler`: serialização results.json
+
+### M2 — Infraestrutura
+
+- [x] Template SAM: DynamoDB, S3, CloudFront, Lambda, Step Functions
+- [x] API Gateway REST + VTL mapping
+- [ ] `sam deploy --guided` funcional end-to-end
+- [ ] Testes de integração: POST real → resultados no CloudFront
+
+### M3 — Frontend
+
+- [ ] Scanner QR funcional (`html5-qrcode`) no mobile
+- [ ] Envio para API e exibição de confirmação
+- [ ] Página de resultados: leitura do CloudFront JSON
+- [ ] Deploy no Vercel
+
+### M4 — Qualidade e Segurança
+
+- [ ] Cobertura de testes > 80% (backend)
+- [ ] `pip audit` e `npm audit` sem vulnerabilidades críticas
+- [ ] Checklist de segurança completo
+- [ ] Load test: 500 BUs simultâneos sem erro
+
+### M5 — Documentação e Lançamento
+
+- [x] README
+- [x] ARCHITECTURE.md
+- [x] SECURITY-CHECKLIST.md
+- [x] Site de documentação (este site)
+- [ ] Guia de contribuição (CONTRIBUTING.md)
+- [ ] Release v0.1.0
+
+## Fora do Escopo do MVP
+
+- Autenticação de usuários
+- Dashboard em tempo real (WebSocket)
+- Análise estatística de discrepâncias
+- Suporte a múltiplos turnos simultâneos
+- App mobile nativo (iOS/Android)
+- Integração com dados oficiais do TSE para cross-validation automática

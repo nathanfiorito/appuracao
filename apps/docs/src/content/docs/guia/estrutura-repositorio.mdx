@@ -1,0 +1,66 @@
+---
+title: Estrutura do Repositório
+description: Mapa completo da árvore de arquivos e responsabilidades de cada módulo.
+---
+
+```
+appuracao/
+├── backend/
+│   ├── lambdas/
+│   │   ├── parse_handler.py          # Step 1 — tag:value → BulletinData
+│   │   ├── assemble_handler.py       # Step 2 — reassembly de multi-QR
+│   │   ├── verify_handler.py         # Step 3 — SHA-512 + Ed25519
+│   │   ├── deduplicate_handler.py    # Step 4 — lookup DynamoDB
+│   │   ├── store_handler.py          # Step 5 — insert imutável
+│   │   ├── tally_handler.py          # Step 6 — recomputa agregação
+│   │   └── publish_handler.py        # Step 7 — escreve results.json → S3
+│   └── models/
+│       └── bulletin.py               # Pydantic BulletinData
+├── frontend/
+│   ├── src/
+│   │   ├── app/
+│   │   │   └── page.tsx              # Scanner QR + submit
+│   │   └── components/
+│   │       └── QRScanner.tsx         # html5-qrcode wrapper
+│   ├── .env.local.example
+│   └── package.json
+├── infrastructure/
+│   ├── template.yaml                 # AWS SAM — todos os recursos
+│   └── statemachine/
+│       └── bulletin_processing.asl.json  # Step Functions ASL
+├── scripts/
+│   └── fetch_tse_keys.py             # Baixa chave pública do TSE
+├── tests/
+│   ├── test_parse.py
+│   ├── test_verify.py
+│   └── test_deduplicate.py
+├── docs/
+│   ├── ARCHITECTURE.md
+│   └── SECURITY-CHECKLIST.md
+├── apps/
+│   └── docs/                         # Este site (Starlight)
+├── pyproject.toml
+├── Makefile
+└── README.md
+```
+
+## Módulos principais
+
+### `backend/lambdas/`
+
+Cada arquivo corresponde a um passo do Step Functions Express. Todos seguem a mesma interface:
+
+```python
+def handler(event: dict, context) -> dict:
+    ...
+```
+
+O `event` recebe o estado atual da execução; o retorno é mergeado ao estado para o próximo passo.
+
+### `infrastructure/template.yaml`
+
+Template AWS SAM com todos os recursos: tabelas DynamoDB, bucket S3, distribuição CloudFront, funções Lambda, máquina de estados Step Functions, API Gateway REST, roles IAM.
+
+### `infrastructure/statemachine/bulletin_processing.asl.json`
+
+Definição da máquina de estados em Amazon States Language (ASL). Cada estado invoca uma Lambda via `Task` com retry automático em erros transitórios.

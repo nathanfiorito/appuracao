@@ -1,0 +1,79 @@
+---
+title: Templates VTL
+description: Velocity Template Language usado no API Gateway para integração direta com Step Functions.
+---
+
+O API Gateway usa VTL (Velocity Template Language) para transformar o body da requisição HTTP diretamente no formato esperado pelo Step Functions, sem passar por uma Lambda intermediária.
+
+## Request Template (Integration Request)
+
+```text
+#set($input = $input.json('$'))
+{
+  "input": "{\"qr_codes\": $input.qr_codes, \"metadata\": {\"request_id\": \"$context.requestId\", \"source_ip\": \"$context.identity.sourceIp\", \"timestamp\": \"$context.requestTime\"}}",
+  "stateMachineArn": "${BulletinStateMachine}"
+}
+```
+
+### O que este template faz
+
+1. Extrai o campo `qr_codes` do body JSON da requisição
+2. Constrói o JSON de input para o Step Functions, incluindo:
+   - Os QR codes enviados pelo usuário
+   - Metadados do contexto API Gateway: `requestId`, IP de origem, timestamp
+3. Define o ARN da state machine que será executada
+
+### Variáveis de Contexto Disponíveis
+
+| Variável | Valor |
+|---------|-------|
+| `$context.requestId` | ID único da requisição (usado como `session_id` para multi-QR) |
+| `$context.identity.sourceIp` | IP do cliente (logging/auditoria) |
+| `$context.requestTime` | Timestamp da requisição |
+| `$context.stage` | Stage da API (`prod`) |
+
+## Response Template (Integration Response)
+
+```text
+#set($output = $input.json('$'))
+{
+  "status": "accepted",
+  "execution_id": "$output.executionArn"
+}
+```
+
+O Step Functions retorna o ARN de execução ao iniciar, que é repassado ao cliente para possível consulta de status futura.
+
+## Por que VTL em vez de Lambda Proxy?
+
+Uma Lambda intermediária adicionaria:
+- Latência: ~100-200ms de cold start
+- Custo: 500K invocações/eleição nacional = ~$0.10 extras
+- Ponto de falha adicional
+- Necessidade de role extra
+
+O VTL é executado no próprio API Gateway, sem custo computacional adicional.
+
+## JSON Schema de Validação
+
+O API Gateway valida o body antes de processar o VTL:
+
+```json
+{
+  "type": "object",
+  "required": ["qr_codes"],
+  "properties": {
+    "qr_codes": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 4,
+      "items": {
+        "type": "string",
+        "minLength": 10
+      }
+    }
+  }
+}
+```
+
+Requisições inválidas retornam `400 Bad Request` antes mesmo de chegar ao VTL.

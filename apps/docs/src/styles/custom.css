@@ -1,0 +1,12 @@
+/* Apuração Paralela — green theme */
+:root {
+  --sl-color-accent-low: #052e16;
+  --sl-color-accent: #15803d;
+  --sl-color-accent-high: #bbf7d0;
+}
+
+:root[data-theme='light'] {
+  --sl-color-accent-low: #dcfce7;
+  --sl-color-accent: #15803d;
+  --sl-color-accent-high: #052e16;
+}

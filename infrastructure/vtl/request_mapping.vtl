@@ -1,0 +1,7 @@
+## VTL Mapping Template — API Gateway → Step Functions (Request)
+## Transforms the POST /bulletins body into a Step Functions StartExecution input.
+#set($input = $input.json('$'))
+{
+  "input": "{\"qr_codes\": $input.qr_codes, \"metadata\": {\"request_id\": \"$context.requestId\", \"source_ip\": \"$context.identity.sourceIp\", \"timestamp\": \"$context.requestTime\"}}",
+  "stateMachineArn": "$stageVariables.stateMachineArn"
+}

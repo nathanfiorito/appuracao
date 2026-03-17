@@ -1,0 +1,28 @@
+---
+title: Decisões Técnicas
+description: Registro de decisões arquiteturais (ADR-style) do projeto.
+---
+
+## Tabela de Decisões
+
+| # | Decisão | Alternativas Consideradas | Justificativa |
+|---|---------|--------------------------|---------------|
+| 1 | **API Gateway + VTL → Step Functions direto** | Lambda proxy na frente | Elimina cold start e custo extra; VTL suficiente para o mapeamento simples |
+| 2 | **Step Functions Express (não Standard)** | Standard Workflow, SQS + Lambda | Express tem execução síncrona/assíncrona de até 5 min; preço por transição (não por execução); console de observabilidade nativo |
+| 3 | **DynamoDB PAY_PER_REQUEST** | Provisioned capacity, RDS | Zero operação, free tier 25 GB permanente, key-value ideal para lookup por seção eleitoral |
+| 4 | **S3 + CloudFront para resultados** | API Gateway para leitura, RDS read replica | Resultados são lidos por N usuários mas escritos raramente; estático = escala infinita sem custo |
+| 5 | **PyNaCl (libsodium) para Ed25519** | cryptography (PyCryptodome), nacl puro Python | libsodium é a implementação de referência; PyNaCl é wrapper oficial; performance nativa |
+| 6 | **Frontend Next.js no Vercel** | SPA pura no S3/CloudFront, React no Amplify | Camera API precisa de HTTPS (Vercel gratuito); SSR para SEO; zero config de infra |
+| 7 | **AWS SAM (não CDK ou Terraform)** | CDK (TypeScript), Terraform, Pulumi | SAM é nativo para serverless; YAML declarativo mais legível; `sam local` para dev local; menos abstração = menos surpresa |
+| 8 | **Python 3.11 para Lambdas** | Node.js 20, Go, Java 21 | Ecossistema criptográfico mais maduro (PyNaCl, Pydantic); velocidade de desenvolvimento; sem overhead de compilação |
+| 9 | **Imutabilidade via DynamoDB ConditionExpression** | Soft delete, timestamp de update | Prevenção de replay attack a nível de banco; sem lógica extra na aplicação; auditável |
+| 10 | **raw_text armazenado integralmente** | Apenas campos parsed, apenas hash | Auditabilidade: qualquer pessoa pode verificar independentemente sem depender do nosso parser |
+
+## Decisões em Aberto
+
+| Tema | Opções | Pendência |
+|------|--------|----------|
+| Batching no Tally | Tally por BU vs. batch de 10/50/100 | Medir latência de scan DynamoDB com 500K items |
+| Autenticação na API | Nenhuma (atual) vs. Cognito anônimo vs. rate limit por IP | Avaliar risco de spam de BUs falsos (falham na verificação, mas geram custo) |
+| Multi-turno | Config hardcoded vs. parâmetro dinâmico | Aguarda requisito do segundo turno |
+| Alertas | Sem alertas (atual) vs. CloudWatch Alarms | Definir SLA de disponibilidade |

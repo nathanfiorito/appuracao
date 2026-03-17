@@ -1,0 +1,19 @@
+{
+  "name": "appuracao-docs",
+  "type": "module",
+  "version": "0.1.0",
+  "scripts": {
+    "dev": "astro dev",
+    "build": "astro build",
+    "preview": "astro preview"
+  },
+  "dependencies": {
+    "@astrojs/starlight": "^0.38",
+    "astro": "^6.0",
+    "rehype-mermaid": "^3.0",
+    "sharp": "^0.33"
+  },
+  "devDependencies": {
+    "playwright": "^1.49"
+  }
+}

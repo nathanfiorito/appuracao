@@ -1,0 +1,199 @@
+{
+  "Comment": "Apuração Paralela — Bulletin processing pipeline",
+  "StartAt": "Parse",
+  "States": {
+    "Parse": {
+      "Type": "Task",
+      "Resource": "${ParseFunctionArn}",
+      "Retry": [
+        {
+          "ErrorEquals": ["Lambda.ServiceException", "Lambda.AWSLambdaException", "Lambda.SdkClientException"],
+          "IntervalSeconds": 2,
+          "MaxAttempts": 3,
+          "BackoffRate": 2
+        }
+      ],
+      "Catch": [
+        {
+          "ErrorEquals": ["States.ALL"],
+          "Next": "ParseFailed",
+          "ResultPath": "$.error"
+        }
+      ],
+      "Next": "CheckNeedsAssembly"
+    },
+
+    "CheckNeedsAssembly": {
+      "Type": "Choice",
+      "Choices": [
+        {
+          "Variable": "$.needs_assembly",
+          "BooleanEquals": true,
+          "Next": "Assemble"
+        }
+      ],
+      "Default": "Verify"
+    },
+
+    "Assemble": {
+      "Type": "Task",
+      "Resource": "${AssembleFunctionArn}",
+      "Retry": [
+        {
+          "ErrorEquals": ["Lambda.ServiceException", "Lambda.AWSLambdaException", "Lambda.SdkClientException"],
+          "IntervalSeconds": 2,
+          "MaxAttempts": 3,
+          "BackoffRate": 2
+        }
+      ],
+      "Catch": [
+        {
+          "ErrorEquals": ["States.ALL"],
+          "Next": "AssemblyFailed",
+          "ResultPath": "$.error"
+        }
+      ],
+      "Next": "Verify"
+    },
+
+    "Verify": {
+      "Type": "Task",
+      "Resource": "${VerifyFunctionArn}",
+      "Retry": [
+        {
+          "ErrorEquals": ["Lambda.ServiceException", "Lambda.AWSLambdaException", "Lambda.SdkClientException"],
+          "IntervalSeconds": 2,
+          "MaxAttempts": 3,
+          "BackoffRate": 2
+        }
+      ],
+      "Catch": [
+        {
+          "ErrorEquals": ["States.ALL"],
+          "Next": "VerifyFailed",
+          "ResultPath": "$.error"
+        }
+      ],
+      "Next": "Deduplicate"
+    },
+
+    "Deduplicate": {
+      "Type": "Task",
+      "Resource": "${DeduplicateFunctionArn}",
+      "Retry": [
+        {
+          "ErrorEquals": ["Lambda.ServiceException", "Lambda.AWSLambdaException", "Lambda.SdkClientException"],
+          "IntervalSeconds": 2,
+          "MaxAttempts": 3,
+          "BackoffRate": 2
+        }
+      ],
+      "Catch": [
+        {
+          "ErrorEquals": ["States.ALL"],
+          "Next": "StoreFailed",
+          "ResultPath": "$.error"
+        }
+      ],
+      "Next": "Store"
+    },
+
+    "Store": {
+      "Type": "Task",
+      "Resource": "${StoreFunctionArn}",
+      "Retry": [
+        {
+          "ErrorEquals": ["Lambda.ServiceException", "Lambda.AWSLambdaException", "Lambda.SdkClientException"],
+          "IntervalSeconds": 2,
+          "MaxAttempts": 3,
+          "BackoffRate": 2
+        }
+      ],
+      "Catch": [
+        {
+          "ErrorEquals": ["States.ALL"],
+          "Next": "StoreFailed",
+          "ResultPath": "$.error"
+        }
+      ],
+      "Next": "Tally"
+    },
+
+    "Tally": {
+      "Type": "Task",
+      "Resource": "${TallyFunctionArn}",
+      "Retry": [
+        {
+          "ErrorEquals": ["Lambda.ServiceException", "Lambda.AWSLambdaException", "Lambda.SdkClientException"],
+          "IntervalSeconds": 2,
+          "MaxAttempts": 3,
+          "BackoffRate": 2
+        }
+      ],
+      "Catch": [
+        {
+          "ErrorEquals": ["States.ALL"],
+          "Next": "TallyFailed",
+          "ResultPath": "$.error"
+        }
+      ],
+      "Next": "Publish"
+    },
+
+    "Publish": {
+      "Type": "Task",
+      "Resource": "${PublishFunctionArn}",
+      "Retry": [
+        {
+          "ErrorEquals": ["Lambda.ServiceException", "Lambda.AWSLambdaException", "Lambda.SdkClientException"],
+          "IntervalSeconds": 2,
+          "MaxAttempts": 3,
+          "BackoffRate": 2
+        }
+      ],
+      "Catch": [
+        {
+          "ErrorEquals": ["States.ALL"],
+          "Next": "PublishFailed",
+          "ResultPath": "$.error"
+        }
+      ],
+      "Next": "Success"
+    },
+
+    "Success": {
+      "Type": "Succeed"
+    },
+
+    "ParseFailed": {
+      "Type": "Fail",
+      "Error": "ParseError",
+      "Cause": "Failed to parse QR code text"
+    },
+    "AssemblyFailed": {
+      "Type": "Fail",
+      "Error": "AssemblyError",
+      "Cause": "Failed to assemble multi-QR bulletin"
+    },
+    "VerifyFailed": {
+      "Type": "Fail",
+      "Error": "VerifyError",
+      "Cause": "Failed to verify bulletin signature"
+    },
+    "StoreFailed": {
+      "Type": "Fail",
+      "Error": "StoreError",
+      "Cause": "Failed to store bulletin"
+    },
+    "TallyFailed": {
+      "Type": "Fail",
+      "Error": "TallyError",
+      "Cause": "Failed to compute vote totals"
+    },
+    "PublishFailed": {
+      "Type": "Fail",
+      "Error": "PublishError",
+      "Cause": "Failed to publish results"
+    }
+  }
+}

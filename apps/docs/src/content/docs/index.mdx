@@ -1,0 +1,39 @@
+---
+title: Apuração Paralela
+description: Contagem paralela e independente de votos via QR Code das urnas eletrônicas brasileiras.
+template: splash
+hero:
+  title: Apuração Paralela
+  tagline: Contagem paralela e independente de votos via QR Code das urnas eletrônicas brasileiras.
+  actions:
+    - text: Início Rápido
+      link: /guia/inicio-rapido/
+      icon: right-arrow
+      variant: primary
+    - text: Ver no GitHub
+      link: https://github.com/your-org/appuracao
+      icon: external
+---
+
+## Como funciona
+
+Após o fechamento das urnas, cada seção eleitoral imprime o **Boletim de Urna (BU)** — um comprovante em papel com QR codes contendo os resultados oficiais assinados digitalmente pelo TSE.
+
+1. Qualquer cidadão escaneia o QR code com a câmera do celular
+2. O app decodifica o texto no browser e envia para a API
+3. O backend verifica o hash SHA-512 e a assinatura Ed25519 emitida pelo TSE
+4. BUs válidos são armazenados e agregados
+5. Os resultados são publicados como JSON público via CloudFront
+
+## Stack
+
+| Camada | Tecnologia |
+|--------|-----------|
+| Frontend | Next.js (Vercel) + `html5-qrcode` |
+| API | API Gateway REST + VTL |
+| Orquestração | Step Functions Express |
+| Processamento | Lambda Python 3.11 |
+| Banco de dados | DynamoDB |
+| Armazenamento | S3 + CloudFront |
+| IaC | AWS SAM |
+| Criptografia | PyNaCl (libsodium) — Ed25519 |

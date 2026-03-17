@@ -1,0 +1,64 @@
+---
+title: DynamoDB
+description: Schema das duas tabelas DynamoDB usadas pelo sistema.
+---
+
+O sistema usa duas tabelas DynamoDB com faturamento pay-per-request. Ambas ficam dentro do free tier permanente (25 GB) para escala municipal.
+
+## Tabela `appuracao-bulletins`
+
+Armazena os Boletins de Urna verificados e processados.
+
+| Atributo | Tipo | Descrição |
+|----------|------|-----------|
+| `pk` (HASH) | String | `{PROC}#{PLEI}#{TURN}` — chave do processo eleitoral |
+| `sk` (RANGE) | String | `{UNFE}#{MUNI}#{ZONA}#{SECA}` — identificador da seção |
+| `raw_text` | String | Texto QR bruto completo (para auditoria) |
+| `eligible_voters` | Number | Total de eleitores aptos |
+| `compared_voters` | Number | Total de eleitores que votaram |
+| `absent_voters` | Number | Total de ausentes |
+| `elections` | Map | JSON com votos por cargo e candidato |
+| `hash_value` | String | Hash SHA-512 do conteúdo |
+| `signature` | String | Assinatura Ed25519 do TSE |
+| `sig_verified` | Boolean | `true` se a verificação passou |
+| `created_at` | String | Timestamp ISO 8601 |
+
+### Exemplo de chave
+
+```
+PK: "0000#0001#1"        → processo 0000, pleito 0001, turno 1
+SK: "SP#71072#0001#0001"  → SP, município 71072, zona 0001, seção 0001
+```
+
+### Imutabilidade
+
+Todos os inserts usam `ConditionExpression: attribute_not_exists(pk)`. Um BU da mesma seção jamais pode ser sobrescrito.
+
+## Tabela `appuracao-partial-qrcodes`
+
+Buffer temporário para reassembly de BUs com múltiplos QR codes.
+
+| Atributo | Tipo | Descrição |
+|----------|------|-----------|
+| `pk` (HASH) | String | `session_id` = `requestId` do API Gateway |
+| `sk` (RANGE) | String | `qr_index` — índice 1-based do fragmento |
+| `ttl` | Number | Unix timestamp de expiração (1 hora após criação) |
+| `total` | Number | Total de fragmentos esperados |
+| `raw_text` | String | Texto do fragmento |
+
+### TTL
+
+Items expiram automaticamente após 1 hora. Sessões incompletas (usuário escaneou apenas alguns QRs) são descartadas sem intervenção manual.
+
+## Padrão de Acesso
+
+```
+Ingestão:
+  GET partial_qrcodes: pk = session_id
+  PUT partial_qrcodes: pk = session_id, sk = qr_index
+  GET bulletins:       pk = PROC#PLEI#TURN, sk = UNFE#MUNI#ZONA#SECA
+  PUT bulletins:       pk = PROC#PLEI#TURN, sk = UNFE#MUNI#ZONA#SECA
+
+Totalização:
+  SCAN bulletins: pk begins_with "PROC#PLEI#TURN"
+```

@@ -1,0 +1,374 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Transform: AWS::Serverless-2016-10-31
+Description: Apuração Paralela de Votos — Serverless pipeline
+
+Globals:
+  Function:
+    Runtime: python3.11
+    Handler: app.handler
+    Timeout: 30
+    MemorySize: 256
+    Environment:
+      Variables:
+        BULLETINS_TABLE: !Ref BulletinsTable
+        PARTIAL_QR_TABLE: !Ref PartialQRTable
+        RESULTS_BUCKET: !Ref ResultsBucket
+        TSE_PUBLIC_KEY_HEX: !Ref TSEPublicKeyHex
+
+Parameters:
+  TSEPublicKeyHex:
+    Type: String
+    Description: Hex-encoded TSE Ed25519 public key
+    NoEcho: true
+
+# ─── DynamoDB Tables ──────────────────────────────────────────────────────────
+
+Resources:
+  BulletinsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: appuracao-bulletins
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: pk
+          AttributeType: S
+        - AttributeName: sk
+          AttributeType: S
+      KeySchema:
+        - AttributeName: pk
+          KeyType: HASH
+        - AttributeName: sk
+          KeyType: RANGE
+
+  PartialQRTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: appuracao-partial-qrcodes
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: pk
+          AttributeType: S
+        - AttributeName: sk
+          AttributeType: S
+      KeySchema:
+        - AttributeName: pk
+          KeyType: HASH
+        - AttributeName: sk
+          KeyType: RANGE
+      TimeToLiveSpecification:
+        AttributeName: ttl
+        Enabled: true
+
+# ─── S3 + CloudFront ──────────────────────────────────────────────────────────
+
+  ResultsBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub appuracao-results-${AWS::AccountId}
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+
+  ResultsBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref ResultsBucket
+      PolicyDocument:
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: cloudfront.amazonaws.com
+            Action: s3:GetObject
+            Resource: !Sub arn:aws:s3:::${ResultsBucket}/*
+            Condition:
+              StringEquals:
+                AWS:SourceArn: !Sub arn:aws:cloudfront::${AWS::AccountId}:distribution/${CloudFrontDistribution}
+
+  CloudFrontOAC:
+    Type: AWS::CloudFront::OriginAccessControl
+    Properties:
+      OriginAccessControlConfig:
+        Name: appuracao-oac
+        OriginAccessControlOriginType: s3
+        SigningBehavior: always
+        SigningProtocol: sigv4
+
+  CloudFrontDistribution:
+    Type: AWS::CloudFront::Distribution
+    Properties:
+      DistributionConfig:
+        Enabled: true
+        DefaultRootObject: results.json
+        Origins:
+          - Id: S3Results
+            DomainName: !GetAtt ResultsBucket.RegionalDomainName
+            OriginAccessControlId: !Ref CloudFrontOAC
+            S3OriginConfig:
+              OriginAccessIdentity: ""
+        DefaultCacheBehavior:
+          TargetOriginId: S3Results
+          ViewerProtocolPolicy: redirect-to-https
+          CachePolicyId: 4135ea2d-6df8-44a3-9df3-4b5a84be39ad  # CachingDisabled
+          AllowedMethods: [GET, HEAD]
+          CachedMethods: [GET, HEAD]
+          Compress: true
+        HttpVersion: http2
+
+# ─── Lambda Functions ─────────────────────────────────────────────────────────
+
+  ParseFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: ../backend/lambdas/
+      Handler: parse_handler.handler
+      Policies:
+        - Version: "2012-10-17"
+          Statement:
+            - Effect: Allow
+              Action: []
+              Resource: "*"
+
+  AssembleFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: ../backend/lambdas/
+      Handler: assemble_handler.handler
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref PartialQRTable
+
+  VerifyFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: ../backend/lambdas/
+      Handler: verify_handler.handler
+
+  DeduplicateFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: ../backend/lambdas/
+      Handler: deduplicate_handler.handler
+      Policies:
+        - DynamoDBReadPolicy:
+            TableName: !Ref BulletinsTable
+
+  StoreFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: ../backend/lambdas/
+      Handler: store_handler.handler
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref BulletinsTable
+
+  TallyFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: ../backend/lambdas/
+      Handler: tally_handler.handler
+      Timeout: 60
+      Policies:
+        - DynamoDBReadPolicy:
+            TableName: !Ref BulletinsTable
+
+  PublishFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: ../backend/lambdas/
+      Handler: publish_handler.handler
+      Policies:
+        - S3WritePolicy:
+            BucketName: !Ref ResultsBucket
+
+# ─── Step Functions ───────────────────────────────────────────────────────────
+
+  StateMachineRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: states.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: InvokeLambdas
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action: lambda:InvokeFunction
+                Resource:
+                  - !GetAtt ParseFunction.Arn
+                  - !GetAtt AssembleFunction.Arn
+                  - !GetAtt VerifyFunction.Arn
+                  - !GetAtt DeduplicateFunction.Arn
+                  - !GetAtt StoreFunction.Arn
+                  - !GetAtt TallyFunction.Arn
+                  - !GetAtt PublishFunction.Arn
+
+  BulletinStateMachine:
+    Type: AWS::Serverless::StateMachine
+    Properties:
+      DefinitionUri: statemachine/bulletin_processing.asl.json
+      DefinitionSubstitutions:
+        ParseFunctionArn: !GetAtt ParseFunction.Arn
+        AssembleFunctionArn: !GetAtt AssembleFunction.Arn
+        VerifyFunctionArn: !GetAtt VerifyFunction.Arn
+        DeduplicateFunctionArn: !GetAtt DeduplicateFunction.Arn
+        StoreFunctionArn: !GetAtt StoreFunction.Arn
+        TallyFunctionArn: !GetAtt TallyFunction.Arn
+        PublishFunctionArn: !GetAtt PublishFunction.Arn
+      Type: EXPRESS
+      Role: !GetAtt StateMachineRole.Arn
+      Logging:
+        Destinations:
+          - CloudWatchLogsLogGroup:
+              LogGroupArn: !GetAtt StateMachineLogGroup.Arn
+        Level: ERROR
+        IncludeExecutionData: true
+
+  StateMachineLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: /aws/states/appuracao-bulletin-processing
+      RetentionInDays: 30
+
+# ─── API Gateway ──────────────────────────────────────────────────────────────
+
+  ApiGatewayRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: apigateway.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: StartStepFunctions
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action: states:StartExecution
+                Resource: !Ref BulletinStateMachine
+
+  AppuracaoApi:
+    Type: AWS::ApiGateway::RestApi
+    Properties:
+      Name: appuracao-api
+      Description: Apuração Paralela — Bulletin ingest API
+      EndpointConfiguration:
+        Types: [REGIONAL]
+
+  BulletinsResource:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      RestApiId: !Ref AppuracaoApi
+      ParentId: !GetAtt AppuracaoApi.RootResourceId
+      PathPart: bulletins
+
+  BulletinsPostMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref AppuracaoApi
+      ResourceId: !Ref BulletinsResource
+      HttpMethod: POST
+      AuthorizationType: NONE
+      RequestValidatorId: !Ref RequestValidator
+      RequestModels:
+        application/json: !Ref BulletinRequestModel
+      Integration:
+        Type: AWS
+        IntegrationHttpMethod: POST
+        Uri: !Sub arn:aws:apigateway:${AWS::Region}:states:action/StartExecution
+        Credentials: !GetAtt ApiGatewayRole.Arn
+        RequestTemplates:
+          application/json: !Sub |
+            #set($input = $input.json('$'))
+            {
+              "input": "{\"qr_codes\": $input.qr_codes, \"metadata\": {\"request_id\": \"$context.requestId\", \"source_ip\": \"$context.identity.sourceIp\", \"timestamp\": \"$context.requestTime\"}}",
+              "stateMachineArn": "${BulletinStateMachine}"
+            }
+        IntegrationResponses:
+          - StatusCode: 200
+            ResponseTemplates:
+              application/json: |
+                #set($output = $input.json('$'))
+                {
+                  "status": "accepted",
+                  "execution_id": "$output.executionArn"
+                }
+      MethodResponses:
+        - StatusCode: 200
+          ResponseModels:
+            application/json: Empty
+
+  RequestValidator:
+    Type: AWS::ApiGateway::RequestValidator
+    Properties:
+      RestApiId: !Ref AppuracaoApi
+      ValidateRequestBody: true
+      ValidateRequestParameters: false
+
+  BulletinRequestModel:
+    Type: AWS::ApiGateway::Model
+    Properties:
+      RestApiId: !Ref AppuracaoApi
+      ContentType: application/json
+      Name: BulletinRequest
+      Schema:
+        type: object
+        required: [qr_codes]
+        properties:
+          qr_codes:
+            type: array
+            minItems: 1
+            maxItems: 4
+            items:
+              type: string
+              minLength: 10
+
+  ApiDeployment:
+    Type: AWS::ApiGateway::Deployment
+    DependsOn: BulletinsPostMethod
+    Properties:
+      RestApiId: !Ref AppuracaoApi
+
+  ApiStage:
+    Type: AWS::ApiGateway::Stage
+    Properties:
+      RestApiId: !Ref AppuracaoApi
+      DeploymentId: !Ref ApiDeployment
+      StageName: prod
+      Variables:
+        stateMachineArn: !Ref BulletinStateMachine
+      MethodSettings:
+        - ResourcePath: /bulletins
+          HttpMethod: POST
+          ThrottlingBurstLimit: 100
+          ThrottlingRateLimit: 50
+
+# ─── Outputs ──────────────────────────────────────────────────────────────────
+
+Outputs:
+  ApiUrl:
+    Description: API Gateway endpoint
+    Value: !Sub https://${AppuracaoApi}.execute-api.${AWS::Region}.amazonaws.com/prod
+
+  ResultsUrl:
+    Description: CloudFront results URL
+    Value: !Sub https://${CloudFrontDistribution.DomainName}/results.json
+
+  StateMachineArn:
+    Description: Step Functions state machine ARN
+    Value: !Ref BulletinStateMachine
+
+  BulletinsTableName:
+    Description: DynamoDB bulletins table
+    Value: !Ref BulletinsTable

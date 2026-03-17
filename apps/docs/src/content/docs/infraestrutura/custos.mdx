@@ -1,0 +1,53 @@
+---
+title: Estimativa de Custos
+description: Custo estimado para operar o sistema em escala municipal (~500 seções).
+---
+
+## Escala Municipal (~500 Seções)
+
+| Serviço | Uso estimado | Custo |
+|---------|-------------|-------|
+| Lambda (7 funções × 500 invocações) | 3.500 invocações, ~256 MB, ~2s cada | Free tier |
+| API Gateway REST | 500 chamadas | Free tier |
+| Step Functions Express | 500 execuções × 7 estados | ~$0.004 |
+| DynamoDB | 500 items, < 1 GB | Free tier |
+| S3 | < 1 MB de dados | Free tier |
+| CloudFront | < 1 GB de transferência | Free tier |
+| **Total por eleição** | | **~$0.004** |
+
+## Escala Estadual (~50.000 Seções)
+
+| Serviço | Uso estimado | Custo |
+|---------|-------------|-------|
+| Lambda | 350.000 invocações | ~$0.07 |
+| API Gateway REST | 50.000 chamadas | ~$0.18 |
+| Step Functions Express | 50.000 execuções | ~$0.40 |
+| DynamoDB | 50.000 items, ~5 GB | Free tier |
+| S3 | ~10 MB | Free tier |
+| CloudFront | ~1 GB | Free tier |
+| **Total por eleição** | | **~$0.65** |
+
+## Escala Nacional (~500.000 Seções)
+
+| Serviço | Uso estimado | Custo |
+|---------|-------------|-------|
+| Lambda | 3,5M invocações | ~$0.70 |
+| API Gateway REST | 500K chamadas | ~$1.75 |
+| Step Functions Express | 500K execuções | ~$4.00 |
+| DynamoDB | 500K items, ~50 GB | ~$1.25/mês (acima do free tier) |
+| S3 + CloudFront | < $1 | ~$0.50 |
+| **Total por eleição** | | **~$8.00** |
+
+## Premissas
+
+- Período de ingestão: ~4 horas (urnas fecham às 17h, maioria dos BUs até 21h)
+- Um BU por seção (sem retry por duplicatas)
+- Tally recomputa a cada BU recebido (pode ser otimizado com batching)
+- Lambda memory: 256 MB, duração média: 2s
+- Step Functions Express: $0.000001 por transição de estado
+
+## Otimizações Possíveis
+
+1. **Batching no Tally**: acumular 10-50 BUs antes de recomputar reduz invocações em ~95%
+2. **Lambda SnapStart** (Java) ou **provisioned concurrency**: irrelevante para Python com cold start < 500ms
+3. **DynamoDB on-demand → provisioned**: só vale acima de ~200 WCU/s constantes

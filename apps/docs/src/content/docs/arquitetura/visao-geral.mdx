@@ -1,0 +1,52 @@
+---
+title: Visão Geral da Arquitetura
+description: Stack tecnológica e diagrama de componentes do sistema.
+---
+
+Sistema serverless de contagem paralela de votos baseado nos dados QR Code do Boletim de Urna (BU) das urnas eletrônicas brasileiras.
+
+## Stack
+
+| Camada | Tecnologia | Justificativa |
+|--------|-----------|---------------|
+| Frontend | Next.js / Vercel | Acesso à câmera via `html5-qrcode`, SSR, hospedagem gratuita |
+| API Ingest | API Gateway REST + VTL | Zero Lambda no caminho de ingestão, integração direta com Step Functions |
+| Orquestração | Step Functions Express | Retry por passo, observabilidade no console AWS |
+| Processamento | Lambda (Python 3.11) | Funções individuais: parse, assemble, verify, deduplicate, store, tally, publish |
+| Banco de dados | DynamoDB | Serverless, free tier permanente (25 GB), key-value ideal para lookup de BU |
+| Armazenamento | S3 | JSON de resultados estático |
+| CDN | CloudFront | Serving público dos resultados |
+| IaC | AWS SAM | Infraestrutura como código |
+| Criptografia | PyNaCl (libsodium) | Verificação de assinatura Ed25519 |
+| Hash | hashlib (stdlib) | SHA-512 |
+
+## Diagrama de Componentes
+
+```mermaid
+graph TD
+    A[Cidadão — celular] -->|escaneia QR| B[Browser: html5-qrcode]
+    B -->|POST /bulletins| C[API Gateway REST]
+    C -->|VTL mapping| D[Step Functions Express]
+    D --> E[Lambda: Parse]
+    E --> F[Lambda: Assemble]
+    F --> G[Lambda: Verify]
+    G --> H[Lambda: Deduplicate]
+    H --> I[Lambda: Store]
+    I --> J[Lambda: Tally]
+    J --> K[Lambda: Publish]
+    K -->|results.json| L[S3 Bucket]
+    L --> M[CloudFront]
+    M -->|JSON público| N[Qualquer cliente]
+
+    H -.->|lookup| O[(DynamoDB: bulletins)]
+    I -.->|insert| O
+    J -.->|scan| O
+    F -.->|buffer| P[(DynamoDB: partial_qrcodes)]
+```
+
+## Princípios de Design
+
+- **Zero Lambda no caminho crítico de ingestão**: a API Gateway usa VTL para montar o input do Step Functions diretamente, sem overhead de Lambda adicional
+- **Imutabilidade**: BUs são insert-only via `ConditionExpression: attribute_not_exists(pk)`
+- **Verificação criptográfica obrigatória**: nenhum BU é armazenado sem passar pela verificação SHA-512 + Ed25519 do TSE
+- **Auditabilidade**: o `raw_text` do QR code é armazenado integralmente para auditoria independente
