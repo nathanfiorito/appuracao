@@ -24,10 +24,6 @@ export default defineConfig({
       },
       sidebar: [
         {
-          label: 'Início',
-          items: [{ label: 'Visão Geral', slug: 'index' }],
-        },
-        {
           label: 'Arquitetura',
           items: [
             { label: 'Fluxo de Dados', slug: 'architecture/data-flow' },
